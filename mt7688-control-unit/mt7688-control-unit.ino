@@ -30,14 +30,17 @@
 #define IC_4021_COUNT 3
 #define IC_595_COUNT 3
 
-int i, s;
-byte pattern;
-unsigned long oldValue;
-unsigned long newValue;
-unsigned long t;
+int i;
+byte pattern; // Single byte to write to 595.
+unsigned long t; // Temp values read from from 4021.
+uint8_t bytes[4]; // Temp values read  from from Serial1 (MPU).
+unsigned long oldValue; // Current output register values.
+unsigned long newValue; // New output register values.
+
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(9600); // debug serial
+  Serial1.begin(57600); // to MPU
 
   pinMode(IC_4021_CLOCK_PIN, OUTPUT);
   pinMode(IC_4021_LATCH_PIN, OUTPUT);
@@ -59,19 +62,49 @@ void setup() {
 
 void loop() {
 
-  readInput(newValue);
-  if (newValue != oldValue) {
-    oldValue = newValue;
-    writeOutput(oldValue);
-    Serial.println(oldValue, BIN);
+  // Read signal from MPU.  LED is on while reading.
+  if (Serial1.available()) {
+
+    // Wait a bit for the entire message to arrive
+    delay(100);
+
+    // MPU should send request in exactly 3 bytes binary.
+    Serial1.readBytes(bytes, sizeof(bytes) / sizeof(byte));
+    newValue = 0;
+    for (i = 0; i < 4; i++) {
+      newValue |= bytes[0] << (8 * 0) & 0xFF;
+    }
+
+    if (newValue != oldValue) {
+      digitalWrite(LED_BUILTIN, HIGH);
+      oldValue = newValue;
+      writeOutput(oldValue);
+      Serial.println(oldValue, BIN);
+      digitalWrite(LED_BUILTIN, LOW);
+    }
+
+    // Clear input
+    while (Serial1.available()) {
+      Serial1.read();
+    }
   }
 
-  delay(100);
+//  readInput(newValue);
+//  if (newValue != oldValue) {
+//    digitalWrite(LED_BUILTIN, HIGH);
+//
+//    oldValue = newValue;
+//    writeOutput(oldValue);
+//    Serial.println(oldValue, BIN);
+//
+//    digitalWrite(LED_BUILTIN, LOW);
+//  }
+//
+//  delay(100);
 }
 
 void readInput(unsigned long &value) {
-  digitalWrite(LED_BUILTIN, HIGH);
-  
+
   digitalWrite(IC_4021_LATCH_PIN, LOW);
   delayMicroseconds(2);
 
@@ -84,18 +117,14 @@ void readInput(unsigned long &value) {
     digitalWrite(IC_4021_CLOCK_PIN, HIGH);
     delayMicroseconds(2);
 
-    value = value | (t << i);
+    value |= (t << i);
   }
 
   digitalWrite(IC_4021_LATCH_PIN, HIGH);
   delayMicroseconds(2);
-
-  digitalWrite(LED_BUILTIN, LOW);
 }
 
 void writeOutput(unsigned long value) {
-  digitalWrite(LED_BUILTIN, HIGH);
-  
   digitalWrite(IC_595_STCP_PIN, LOW);
 
   for (i = 0; i < IC_595_COUNT; i++) {
@@ -104,6 +133,4 @@ void writeOutput(unsigned long value) {
   }
 
   digitalWrite(IC_595_STCP_PIN, HIGH);
-
-  digitalWrite(LED_BUILTIN, LOW);
 }
