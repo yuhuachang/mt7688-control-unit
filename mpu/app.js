@@ -53,11 +53,18 @@ const server = http.createServer((request, response) => {
           handleNotFound(response);
         }
       } else if (request.method === 'POST') {
-
-        handleResponse(request, response);
         if (queryString === '/') {
-          handleRequest(body);
-          handleResponse(request, response);
+          let hasError = false;
+          try {
+            handleRequest(body);
+          } catch (e) {
+            console.trace(e);
+          }
+          if (hasError) {
+            handleHttpError(response);
+          } else {
+            handleResponse(request, response);
+          }
         } else {
           handleNotFound(response);
         }
@@ -67,7 +74,8 @@ const server = http.createServer((request, response) => {
         handleMethodNotAllowed(response);
       }
     } catch (e) {
-      handleHttpError(response, e);
+      console.trace(e);
+      response.end();
     }
   });
 });
@@ -148,12 +156,11 @@ const saveConfig = () => {
   }
 };
 
-const handleHttpError = (response, error) => {
-  console.trace(error);
+const handleHttpError = (response) => {
+  console.log('Handle Bad Request');
 
-  // response.setHeader("Access-Control-Allow-Origin", "*");
   response.writeHead(400, {'Content-Type': 'text/plain'});
-  response.write('400 Bad Request\n');
+  response.write('400 Bad Request');
   response.end();
 };
 
@@ -162,7 +169,7 @@ const handleResponse = (request, response) => {
   //   loadConfig();
   // }
   // console.log('Response: ', internalStatus);
-  let data = '';
+  let data = '{}';
   // try {
   //   data = JSON.stringify(internalStatus);
   // } catch (e) {
@@ -170,7 +177,7 @@ const handleResponse = (request, response) => {
   // }
 
   // response.setHeader("Access-Control-Allow-Origin", "*");
-  response.writeHead(200, {'Content-Type': 'application/json'});
+  response.writeHead(400, {'Content-Type': 'application/json'});
   response.write(data);
   response.end();
 };
@@ -201,7 +208,6 @@ const handlePreFlight = (request, response) => {
 const handleNotFound = (response) => {
   console.log('404 Not Found');
 
-  //response.setHeader("Access-Control-Allow-Origin", "*");
   response.writeHead(404, {'Content-Type': 'text/plain'});
   response.write('404 Not Found');
   response.end();
@@ -210,7 +216,6 @@ const handleNotFound = (response) => {
 const handleMethodNotAllowed = (response) => {
   console.log('405 Method Not Allowed');
 
-  //response.setHeader("Access-Control-Allow-Origin", "*");
   response.writeHead(405, {'Content-Type': 'text/plain'});
   response.write('405 Method Not Allowed');
   response.end();
@@ -243,15 +248,16 @@ const createSwitchStateRequest = () => {
 const createChangeLatchStateRequest = (requestState) => {
   const buffer = new Buffer(4);
 
-  buffer[0] = 0xAA;
-  buffer[1] = 0xAA;
-  buffer[2] = 0xAA;
-  buffer[3] = 0xAA;
+  // header
+  // buffer[0] = 0x80; // read latch state
+  // buffer[0] = 0x40; // read switch state
+  buffer[0] = 0x24; // write latch state
 
-  // buffer[0] = 0x23;
-  // buffer[1] = 0xAA;
-  // buffer[2] = 0xAA;
-  // buffer[3] = 0xAA;
+  // payload
+  buffer[1] = 0x11;
+  buffer[2] = 0x33;
+  buffer[3] = 0x77;
+  buffer[4] = 0xFF;
 
   serial.write(buffer, (err) => {
     if (err) {

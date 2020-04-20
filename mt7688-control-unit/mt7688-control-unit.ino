@@ -31,12 +31,12 @@
 #define IC_595_COUNT 3
 
 int i;
-byte pattern; // Single byte to write to 595.
-unsigned long t; // Temp values read from from 4021.
-uint8_t bytes[4]; // Temp values read  from from Serial1 (MPU).
-unsigned long oldValue; // Current output register values.
-unsigned long newValue; // New output register values.
+bool isToWriteOutput;
 
+unsigned long t; // Temp values read from from 4021.
+uint8_t header; // Request header.
+uint8_t currentValue[IC_595_COUNT]; // Current value to 595.
+uint8_t newValue[IC_595_COUNT]; // New value read from MPU and will send to 595.
 
 void setup() {
   Serial.begin(9600); // debug serial
@@ -56,11 +56,14 @@ void setup() {
   digitalWrite(IC_595_SHCP_PIN, LOW);
   digitalWrite(LED_BUILTIN, LOW);
 
-  oldValue = 0;
-  newValue = 0;
+  for (int i = 0; i < IC_595_COUNT; i++) {
+    currentValue[i] = 0x01;
+  }
 }
 
 void loop() {
+
+  isToWriteOutput = false;
 
   // Read signal from MPU.  LED is on while reading.
   if (Serial1.available()) {
@@ -68,25 +71,49 @@ void loop() {
     // Wait a bit for the entire message to arrive
     delay(100);
 
-    // MPU should send request in exactly 3 bytes binary.
-    Serial1.readBytes(bytes, sizeof(bytes) / sizeof(byte));
-    newValue = 0;
-    for (i = 0; i < 4; i++) {
-      newValue |= bytes[0] << (8 * 0) & 0xFF;
-    }
+    // Read request header
+    Serial1.readBytes(&header, 1);
 
-    if (newValue != oldValue) {
-      digitalWrite(LED_BUILTIN, HIGH);
-      oldValue = newValue;
-      writeOutput(oldValue);
-      Serial.println(oldValue, BIN);
-      digitalWrite(LED_BUILTIN, LOW);
+    if (header & 0xF0 == 0x80) {
+      Serial.println("Request to read latch state (595 state)");
+
+      uint8_t temp = 0x80 | IC_595_COUNT;
+      Serial1.write(&temp, 1);
+      Serial1.write(currentValue, IC_595_COUNT);
+    } else if (header & 0xF0 == 0x40) {
+      Serial.println("Request to read switch state (4021 state)");
+      
+    } else {
+      Serial.println("Request to write latch state (595 state)");
+      
+      // Determine request bytes.
+      int byteCount = header & 0x0F;
+      if (byteCount > IC_595_COUNT) {
+        byteCount = IC_595_COUNT;
+      }
+
+      // Read serial values
+      Serial1.readBytes(newValue, byteCount);
     }
 
     // Clear input
     while (Serial1.available()) {
       Serial1.read();
     }
+  }
+
+  // Copy values and check if need to write to 595.
+  for (i = 0; i < IC_595_COUNT; i++) {
+    if (currentValue[i] != newValue[i]) {
+      isToWriteOutput = true;
+      currentValue[i] = newValue[i];
+    }
+  }
+
+  if (isToWriteOutput) {
+    digitalWrite(LED_BUILTIN, HIGH);
+    writeOutput();
+    digitalWrite(LED_BUILTIN, LOW);
   }
 
 //  readInput(newValue);
@@ -124,13 +151,11 @@ void readInput(unsigned long &value) {
   delayMicroseconds(2);
 }
 
-void writeOutput(unsigned long value) {
+void writeOutput() {
   digitalWrite(IC_595_STCP_PIN, LOW);
-
-  for (i = 0; i < IC_595_COUNT; i++) {
-    pattern = value >> (8 * i) & 0xFF;
-    shiftOut(IC_595_DS_PIN, IC_595_SHCP_PIN, LSBFIRST, pattern);
+  for (i = IC_595_COUNT - 1; i >= 0; i--) {
+    shiftOut(IC_595_DS_PIN, IC_595_SHCP_PIN, MSBFIRST, currentValue[i]);
+    Serial.println(currentValue[i], BIN);
   }
-
   digitalWrite(IC_595_STCP_PIN, HIGH);
 }
