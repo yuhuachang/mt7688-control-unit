@@ -234,7 +234,7 @@ const handleMethodNotAllowed = (response) => {
 // 1. Latch state
 //    1000 0010 ... (data bytes is 2)
 // 2. Switch state
-//    1000 0010 ... (data bytes is 2)
+//    0100 0010 ... (data bytes is 2)
 
 
 const createLatchStateRequest = () => {
@@ -251,13 +251,14 @@ const createChangeLatchStateRequest = (requestState) => {
   // header
   // buffer[0] = 0x80; // read latch state
   // buffer[0] = 0x40; // read switch state
-  buffer[0] = 0x24; // write latch state
+  // buffer[0] = 0x22; // write latch state
+
+  buffer[0] = 0xE3;
 
   // payload
   buffer[1] = 0x11;
   buffer[2] = 0x33;
-  buffer[3] = 0x77;
-  buffer[4] = 0xFF;
+  buffer[3] = 0xAA;
 
   serial.write(buffer, (err) => {
     if (err) {

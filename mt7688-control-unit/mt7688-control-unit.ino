@@ -30,13 +30,15 @@
 #define IC_4021_COUNT 3
 #define IC_595_COUNT 3
 
-int i;
+int i, j, t;
 bool isToWriteOutput;
-
-unsigned long t; // Temp values read from from 4021.
-uint8_t header; // Request header.
+uint8_t header[1]; // Request header.
+bool readLatchState;
+bool readSwitchState;
+int byteCount; // Bytes to read/write 595.
 uint8_t currentValue[IC_595_COUNT]; // Current value to 595.
 uint8_t newValue[IC_595_COUNT]; // New value read from MPU and will send to 595.
+uint8_t switchValue[IC_4021_COUNT]; // Current value to 4021.
 
 void setup() {
   Serial.begin(9600); // debug serial
@@ -57,7 +59,7 @@ void setup() {
   digitalWrite(LED_BUILTIN, LOW);
 
   for (int i = 0; i < IC_595_COUNT; i++) {
-    currentValue[i] = 0x01;
+    currentValue[i] = 0x00;
   }
 }
 
@@ -72,22 +74,30 @@ void loop() {
     delay(100);
 
     // Read request header
-    Serial1.readBytes(&header, 1);
+    Serial1.readBytes(header, 1);
+    Serial.print("header = 0x");
+    Serial.println(header[0], HEX);
 
-    if (header & 0xF0 == 0x80) {
+    readLatchState = false;
+    readSwitchState = false;
+
+    if (header[0] >> 7 & 0x01 == HIGH) {
       Serial.println("Request to read latch state (595 state)");
-
-      uint8_t temp = 0x80 | IC_595_COUNT;
-      Serial1.write(&temp, 1);
-      Serial1.write(currentValue, IC_595_COUNT);
-    } else if (header & 0xF0 == 0x40) {
+      readLatchState = true;
+    }
+    
+    if (header[0] >> 6 & 0x01 == HIGH) {
       Serial.println("Request to read switch state (4021 state)");
-      
-    } else {
+      readSwitchState = true;
+    }
+
+    if (header[0] >> 5 & 0x01 == HIGH) {
       Serial.println("Request to write latch state (595 state)");
       
       // Determine request bytes.
-      int byteCount = header & 0x0F;
+      byteCount = header[0] & 0x0F;
+      Serial.print("byteCount = ");
+      Serial.println(byteCount);
       if (byteCount > IC_595_COUNT) {
         byteCount = IC_595_COUNT;
       }
@@ -103,7 +113,7 @@ void loop() {
   }
 
   // Copy values and check if need to write to 595.
-  for (i = 0; i < IC_595_COUNT; i++) {
+  for (i = 0; i < byteCount; i++) {
     if (currentValue[i] != newValue[i]) {
       isToWriteOutput = true;
       currentValue[i] = newValue[i];
@@ -116,35 +126,38 @@ void loop() {
     digitalWrite(LED_BUILTIN, LOW);
   }
 
-//  readInput(newValue);
-//  if (newValue != oldValue) {
-//    digitalWrite(LED_BUILTIN, HIGH);
-//
-//    oldValue = newValue;
-//    writeOutput(oldValue);
-//    Serial.println(oldValue, BIN);
-//
-//    digitalWrite(LED_BUILTIN, LOW);
-//  }
-//
-//  delay(100);
+  if (readLatchState) {
+    header[0] = 0x80 | IC_595_COUNT;
+    Serial1.write(header, 1);
+    Serial1.write(currentValue, IC_595_COUNT);
+    readLatchState = false;
+  }
+
+  if (readSwitchState) {
+    readInput();
+    header[0] = 0x40 | IC_4021_COUNT;
+    Serial1.write(header, 1);
+    Serial1.write(switchValue, IC_4021_COUNT);
+    readSwitchState = false;
+  }
+
+  delay(500);
 }
 
-void readInput(unsigned long &value) {
-
+void readInput() {
   digitalWrite(IC_4021_LATCH_PIN, LOW);
   delayMicroseconds(2);
 
-  value = 0;
-
-  for (i = (8 * IC_4021_COUNT) - 1; i >= 0; i--) {
-    digitalWrite(IC_4021_CLOCK_PIN, LOW);
-    delayMicroseconds(2);
-    t = digitalRead(IC_4021_DATA_PIN);
-    digitalWrite(IC_4021_CLOCK_PIN, HIGH);
-    delayMicroseconds(2);
-
-    value |= (t << i);
+  for (i = 0; i < IC_4021_COUNT; i++) {
+    switchValue[i] = 0x00;
+    for (j = 7; j >= 0; j--) {
+      digitalWrite(IC_4021_CLOCK_PIN, LOW);
+      delayMicroseconds(2);
+      t = digitalRead(IC_4021_DATA_PIN);
+      digitalWrite(IC_4021_CLOCK_PIN, HIGH);
+      delayMicroseconds(2);
+      switchValue[i] |= (t << j);
+    }
   }
 
   digitalWrite(IC_4021_LATCH_PIN, HIGH);
@@ -155,6 +168,10 @@ void writeOutput() {
   digitalWrite(IC_595_STCP_PIN, LOW);
   for (i = IC_595_COUNT - 1; i >= 0; i--) {
     shiftOut(IC_595_DS_PIN, IC_595_SHCP_PIN, MSBFIRST, currentValue[i]);
+
+    Serial.print("Write ");
+    Serial.print(i);
+    Serial.print(": ");
     Serial.println(currentValue[i], BIN);
   }
   digitalWrite(IC_595_STCP_PIN, HIGH);
