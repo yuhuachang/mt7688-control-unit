@@ -102,23 +102,47 @@ serial.on('error', (e) => {
 
 serial.on('data', (data) => {
   console.log('Receive data from MCU: ', data);
-  // console.log('Receive data from MCU: %s %s %s', data[0].toString(16), data[1].toString(16), data[2].toString(16));
 
-  // if (requestQueue.length > 0) {
+  let message = {
+    state: {}
+  };
 
-  //   let result = {};
-  //   for (let i = 0; i < 8; i++) {
-  //     result['' + i] = data[0] >> (7 - i) & 0x01 == 0x01 ? true : false;
-  //   }
-  //   for (let i = 0; i < 8; i++) {
-  //     result['' + (i + 8)] = data[1] >> (7 - i) & 0x01 == 0x01 ? true : false;
-  //   }
-  //   for (let i = 0; i < 4; i++) {
-  //     result['' + (i + 16)] = data[2] >> (7 - i) & 0x01 == 0x01 ? true : false;
-  //   }
+  for (let i = 0; i < data.length; ) {
+    let header = data[i];
+    let isLatchState = header >> 7 & 0x01 == 0x01;
+    let isSwitchState = header >> 6 & 0x01 == 0x01;
+    let byteCount = header & 0x0F;
 
-  //   console.log(result);
-  // }
+    console.log('byte[' + i + '] header = ', header.toString(16));
+    console.log('isLatchState = ', isLatchState);
+    console.log('isSwitchState = ', isSwitchState);
+    console.log('byteCount = ', byteCount);
+
+    let part;
+    if (isLatchState === 1) {
+      part = 'latch';
+    } else if (isSwitchState === 1) {
+      part = 'switch';
+    } else {
+      console.error("Unknown header type");
+      break;
+    }
+    message.state[part] = {};
+
+    let j, inx;
+    for (i++, j = 0, inx = 0; j < byteCount && j < data.length; i++, j++) {
+      let v = data[i];
+      console.log("byte[" + i + "]: ", v.toString(16));
+      for (let k = 0; k < 8; k++, inx++) {
+        if (v >> k & 0x01) {
+          message.state[part]['' + inx] = true;
+        } else {
+          message.state[part]['' + inx] = false;
+        }
+      }
+    }
+  }
+  console.log(message);
 });
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -256,8 +280,8 @@ const createChangeLatchStateRequest = (requestState) => {
   buffer[0] = 0xE3;
 
   // payload
-  buffer[1] = 0x11;
-  buffer[2] = 0x33;
+  buffer[1] = 0xAA;
+  buffer[2] = 0x88;
   buffer[3] = 0xAA;
 
   serial.write(buffer, (err) => {
