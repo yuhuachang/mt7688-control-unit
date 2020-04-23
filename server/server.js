@@ -14,26 +14,26 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
-// Settings
 const HTTP_PORT = 8080;
-const WEBSOCKET_PORT = 1337;
 
+// WebSocket client connections
 const connections = [];
+
 let state;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Get current server ip address.
 const interfaces = os.networkInterfaces();
 const addresses = [];
-for (let k in interfaces) {
-  for (let k2 in interfaces[k]) {
-    let address = interfaces[k][k2];
+for (let i in interfaces) {
+  for (let j in interfaces[i]) {
+    let address = interfaces[i][j];
     if (address.family === 'IPv4' && !address.internal) {
       addresses.push(address.address);
     }
   }
 }
-console.log('ip addresses: ', addresses);
+console.log('Host IP Address: ', addresses);
 
 ////////////////////////////////////////////////////////////////////////////////
 // http server to server the static pages
@@ -44,25 +44,26 @@ const server = http.createServer((request, response) => {
   if (uri === '/') {
     uri = '/index.html';
   }
-  console.log('uri: ', uri);
 
   // Settings. (have server settings sent back to the client)
   if (uri === '/settings.js') {
+    let host = request.headers.host;
+
     response.writeHead(200, {'Content-Type': 'text/javascript'});
-    let ip = '127.0.0.1';
-    if (addresses.length == 1) {
-      ip = addresses[0];
-    } else {
-      for (let i = 0; i < addresses.length; i++) {
-        if (addresses[i] != '192.168.100.1') {
-          ip = addresses[i];
-          break;
-        }
+    let s = 'const addresses = [ ';
+    for (let i = 0; i < addresses.length; i++) {
+      s += '"' + addresses[i] + '"';
+      if (i < addresses.length - 1) {
+        s += ', ';
       }
     }
-
-    response.write('const ip = "' + ip + '";' + "\n");
-    response.write('console.log("ip = " + ip);' + "\n");
+    s += "];\n";
+    response.write(s);
+    response.write("const port = " + HTTP_PORT + ";\n");
+    response.write("const host = '" + host + "';\n");
+    response.write('console.log("addresses = ", addresses);' + "\n");
+    response.write('console.log("port = ", port);' + "\n");
+    response.write('console.log("host = ", host);' + "\n");
     response.end();
     return;
   }
@@ -125,10 +126,20 @@ wsServer.on('request', (request) => {
   });
 
   // Client disconnected
-  connection.on('close', (connection) => {
-      console.log('client disconnected.');
+  connection.on('close', (reasonCode, description) => {
+    console.log((new Date()) + ' Peer ' + connection.remoteAddress
+        + ' disconnected. reasonCode = ' + reasonCode
+        + ' description = ' + description);
+    for (let i = connections.length - 1; i >= 0; i--) {
+      if (connections[i].remoteAddress === connection.remoteAddress) {
+        console.log((new Date()) + ' Remove peer ' + connections[i].remoteAddress + ' from subscription.');
+        connections[i].close();
+        connections.splice(i, 1);
+      }
+    }
   });
 
+  // Add client connection to connection list.
   connections.push(connection);
 });
 
@@ -142,6 +153,7 @@ setInterval(() => {
 
 const publish = () => {
   for (let i = 0; i < connections.length; i++) {
+    console.log((new Date()) + ' Send to ' + connections[i].remoteAddress);
     connections[i].sendUTF(JSON.stringify(state));
   }
 };

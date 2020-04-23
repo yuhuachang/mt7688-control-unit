@@ -1,8 +1,6 @@
 $(() => {
   "use strict";
 
-  let ipAddr = $('#ipAddr');
-
   $('#btnBlue').on('click', () => {
     console.log(connection);
     connection.send(JSON.stringify({ color: 'blue' }));
@@ -13,37 +11,34 @@ $(() => {
     connection.send(JSON.stringify({ color: 'green' }));
   });
 
-  // server ip address
-  ipAddr.text(ip);
-
   // if user is running mozilla then use it's built-in WebSocket
   window.WebSocket = window.WebSocket || window.MozWebSocket;
 
   // if browser doesn't support WebSocket, just show some notification and exit
   if (!window.WebSocket) {
     content.html($('<p>', {
-      text: 'Sorry, but your browser doesn\'t support WebSockets.'
+      text: "Sorry, but your browser doesn't support WebSockets."
     }));
     return;
   }
 
   let connection = undefined;
 
-  setInterval(() => {
-    if (connection && connection.readyState === 1) return;
+  const connect = (ip) => {
 
-    connection = new WebSocket('ws://' + ip + ':8080');
+    connection = new WebSocket('ws://' + ip + ':' + port);
 
     connection.onopen = () => {
-      console.log('on open');
+      $('#connStatus').text('Connected to ' + ip + ':' + port);
     };
 
     connection.onclose = () => {
-      console.log('on close');
+      $('#connStatus').text('Connection lost');
+      connection = undefined;
     };
 
     connection.onerror = (error) => {
-      console.log('on error ', error);
+      $('#connStatus').text('Connection error: ' + error);
     };
 
     connection.onmessage = (message) => {
@@ -51,9 +46,9 @@ $(() => {
       try {
         json = JSON.parse(message.data);
 
-        $('#target').css('color', json.color);
+        $('#target').css('background-color', json.color);
       } catch (e) {
-        console.log('This doesn\'t look like a valid JSON: ', message.data);
+        $('#connStatus').text('Connection error: ' + e);
         return;
       }
 
@@ -62,5 +57,15 @@ $(() => {
     };
 
     console.log(connection);
+  };
+
+  setInterval(() => {
+    if (connection && connection.readyState === 1) return;
+    for (let i = 0; i < addresses.length; i++) {
+      if ((addresses[i] + ':' + port) === host) {
+        connect(addresses[i]);
+      }
+      if (connection && connection.readyState === 1) break;
+    }
   }, 1000);
 });
