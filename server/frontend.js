@@ -1,17 +1,15 @@
 $(() => {
   "use strict";
 
-  // Change to blue
-  $('#btnBlue').on('click', () => {
-    console.log(connection);
-    connection.send(JSON.stringify({ color: 'blue' }));
-  });
-
-  // Change to green
-  $('#btnGreen').on('click', () => {
-    console.log(connection);
-    connection.send(JSON.stringify({ color: 'green' }));
-  });
+  let buttons = [];
+  for (let i = 0; i < 24; i++) {
+    let button = $('<button id="btn' + i + '">Button ' + i + '</button>');
+    button.on('click', () => {
+      console.log('button ' + i);
+    });
+    $('#app').append(button);
+    buttons.push(button);
+  }
 
   // if user is running mozilla then use it's built-in WebSocket
   window.WebSocket = window.WebSocket || window.MozWebSocket;
