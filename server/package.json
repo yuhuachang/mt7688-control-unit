@@ -10,7 +10,9 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "bootstrap": "^4.4.1",
     "jquery": "^3.5.0",
+    "popper.js": "^1.16.1",
     "websocket": "^1.0.31"
   }
 }

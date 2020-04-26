@@ -3,9 +3,19 @@ $(() => {
 
   let buttons = [];
   for (let i = 0; i < 24; i++) {
-    let button = $('<button id="btn' + i + '">Button ' + i + '</button>');
+    let button = $('<div id="A' + i + '">Button A' + i + '</div>');
+    button.addClass('btn btn-outline-primary');
     button.on('click', () => {
       console.log('button ' + i);
+
+      // call server to change state
+      fetch('/control/A/' + i)
+        .then(response => {
+          return response.json();
+        })
+        .then(data => {
+          console.log(data);
+        });
     });
     $('#app').append(button);
     buttons.push(button);
@@ -44,13 +54,27 @@ $(() => {
     };
 
     connection.onmessage = (message) => {
-      let json = undefined;
       try {
-        json = JSON.parse(message.data);
-        console.log('JSON: ', json);
+        let state = JSON.parse(message.data);
+        console.log('State: ', state);
 
-        // Do something...
-        $('#target').css('background-color', json.color);
+        // Update unit state
+        const unit = 'A';
+        if (state[unit] && state[unit]['latch']) {
+          console.log("Update latch state");
+          console.log(state[unit]['latch']);
+          for (let i = 0; i < 24; i++) {
+            const target = $('#' + unit + i);
+            console.log(target);
+            if (state[unit]['latch'][i]) {
+              target.removeClass('btn-outline-primary').addClass('btn-primary');
+            } else {
+              target.removeClass('btn-primary').addClass('btn-outline-primary');
+            }
+          }
+        } else {
+          console.log("No latch state");
+        }
       } catch (e) {
         $('#connStatus').text('Connection error: ' + e);
         return;

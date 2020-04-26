@@ -33,12 +33,13 @@
 int i, j, t;
 bool isToWriteOutput;
 uint8_t header[1]; // Request header.
-bool readLatchState;
-bool readSwitchState;
+bool sendLatchState;
+bool sendSwitchState;
 int byteCount; // Bytes to read/write 595.
-uint8_t currentValue[IC_595_COUNT]; // Current value to 595.
-uint8_t newValue[IC_595_COUNT]; // New value read from MPU and will send to 595.
-uint8_t switchValue[IC_4021_COUNT]; // Current value to 4021.
+uint8_t currentLatchValue[IC_595_COUNT]; // Current value to 595.
+uint8_t newLatchValue[IC_595_COUNT]; // New value read from MPU and will send to 595.
+uint8_t currentSwitchValue[IC_4021_COUNT]; // Current value from 4021.
+uint8_t newSwitchValue[IC_4021_COUNT]; // New current value from 4021.
 
 void setup() {
   Serial.begin(9600); // debug serial
@@ -59,41 +60,40 @@ void setup() {
   digitalWrite(LED_BUILTIN, LOW);
 
   for (int i = 0; i < IC_595_COUNT; i++) {
-    currentValue[i] = 0x00;
+    currentLatchValue[i] = 0x00;
   }
+  isToWriteOutput = true;
 }
 
 void loop() {
-
-  isToWriteOutput = false;
 
   // Read signal from MPU.  LED is on while reading.
   if (Serial1.available()) {
 
     // Wait a bit for the entire message to arrive
-    delay(100);
+    delayMicroseconds(10);
 
-    // Read request header
+    // Read request header (first byte)
     Serial1.readBytes(header, 1);
     Serial.print("header = 0x");
     Serial.println(header[0], HEX);
 
-    readLatchState = false;
-    readSwitchState = false;
+    sendLatchState = false;
+    sendSwitchState = false;
 
     if (header[0] >> 7 & 0x01 == HIGH) {
       Serial.println("Request to read latch state (595 state)");
-      readLatchState = true;
+      sendLatchState = true;
     }
     
     if (header[0] >> 6 & 0x01 == HIGH) {
       Serial.println("Request to read switch state (4021 state)");
-      readSwitchState = true;
+      sendSwitchState = true;
     }
 
     if (header[0] >> 5 & 0x01 == HIGH) {
       Serial.println("Request to write latch state (595 state)");
-      
+
       // Determine request bytes.
       byteCount = header[0] & 0x0F;
       Serial.print("byteCount = ");
@@ -103,7 +103,7 @@ void loop() {
       }
 
       // Read serial values
-      Serial1.readBytes(newValue, byteCount);
+      Serial1.readBytes(newLatchValue, byteCount);
     }
 
     // Clear input
@@ -114,34 +114,45 @@ void loop() {
 
   // Copy values and check if need to write to 595.
   for (i = 0; i < byteCount; i++) {
-    if (currentValue[i] != newValue[i]) {
+    if (currentLatchValue[i] != newLatchValue[i]) {
       isToWriteOutput = true;
-      currentValue[i] = newValue[i];
+      currentLatchValue[i] = newLatchValue[i];
     }
   }
 
+  // Write to 595.
   if (isToWriteOutput) {
     digitalWrite(LED_BUILTIN, HIGH);
     writeOutput();
     digitalWrite(LED_BUILTIN, LOW);
   }
 
-  if (readLatchState) {
+  // Send 595 state.
+  if (sendLatchState) {
     header[0] = 0x80 | IC_595_COUNT;
     Serial1.write(header, 1);
-    Serial1.write(currentValue, IC_595_COUNT);
-    readLatchState = false;
+    Serial1.write(currentLatchValue, IC_595_COUNT);
+    sendLatchState = false;
   }
 
-  if (readSwitchState) {
-    readInput();
+  // Read current 4021 state.
+  readInput();
+  for (i = 0; i < IC_4021_COUNT; i++) {
+    if (currentSwitchValue[i] != newSwitchValue[i]) {
+      currentSwitchValue[i] = newSwitchValue[i];
+      sendSwitchState = true;
+    }
+  }
+
+  // Send 4021 state.
+  if (sendSwitchState) {
     header[0] = 0x40 | IC_4021_COUNT;
     Serial1.write(header, 1);
-    Serial1.write(switchValue, IC_4021_COUNT);
-    readSwitchState = false;
+    Serial1.write(currentSwitchValue, IC_4021_COUNT);
+    sendSwitchState = false;
   }
 
-  delay(500);
+  Serial1.flush();
 }
 
 void readInput() {
@@ -149,14 +160,14 @@ void readInput() {
   delayMicroseconds(2);
 
   for (i = 0; i < IC_4021_COUNT; i++) {
-    switchValue[i] = 0x00;
+    newSwitchValue[i] = 0x00;
     for (j = 7; j >= 0; j--) {
       digitalWrite(IC_4021_CLOCK_PIN, LOW);
       delayMicroseconds(2);
       t = digitalRead(IC_4021_DATA_PIN);
       digitalWrite(IC_4021_CLOCK_PIN, HIGH);
       delayMicroseconds(2);
-      switchValue[i] |= (t << j);
+      newSwitchValue[i] |= (t << j);
     }
   }
 
@@ -167,12 +178,13 @@ void readInput() {
 void writeOutput() {
   digitalWrite(IC_595_STCP_PIN, LOW);
   for (i = IC_595_COUNT - 1; i >= 0; i--) {
-    shiftOut(IC_595_DS_PIN, IC_595_SHCP_PIN, MSBFIRST, currentValue[i]);
+    shiftOut(IC_595_DS_PIN, IC_595_SHCP_PIN, MSBFIRST, currentLatchValue[i]);
 
     Serial.print("Write ");
     Serial.print(i);
     Serial.print(": ");
-    Serial.println(currentValue[i], BIN);
+    Serial.println(currentLatchValue[i], BIN);
   }
   digitalWrite(IC_595_STCP_PIN, HIGH);
+  isToWriteOutput = false;
 }

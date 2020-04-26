@@ -68,9 +68,132 @@ const server = http.createServer((request, response) => {
     return;
   }
 
+  // Callback from control unit.
+  if (uri.startsWith('/state')) {
+    console.log(new Date() + " Received callback from control unit " + uri);
+    let piece = uri.split('/');
+    const unit = piece[piece.length - 2];
+    const data = Buffer.from(piece[piece.length - 1], "hex");
+
+    // Decode current state and publish to client.
+    if (!state) {
+      state = {};
+    }
+    if (!state[unit]) {
+      state[unit] = {};
+    }
+
+    for (let i = 0; i < data.length; ) {
+      let header = data[i];
+      let isLatchState = header >> 7 & 0x01 == 0x01;
+      let isSwitchState = header >> 6 & 0x01 == 0x01;
+      let byteCount = header & 0x0F;
+
+      console.log('byte[' + i + '] header = ', header.toString(16));
+      console.log('isLatchState = ', isLatchState);
+      console.log('isSwitchState = ', isSwitchState);
+      console.log('byteCount = ', byteCount);
+
+      let part;
+      if (isLatchState === 1) {
+        part = 'latch';
+      } else if (isSwitchState === 1) {
+        part = 'switch';
+      } else {
+        console.error("Unknown header type");
+        break;
+      }
+      state[unit][part] = {};
+
+      let j, inx;
+      for (i++, j = 0, inx = 0; j < byteCount && j < data.length; i++, j++) {
+        let v = data[i];
+        console.log("byte[" + i + "]: ", v.toString(16));
+        for (let k = 0; k < 8; k++, inx++) {
+          if (v >> k & 0x01) {
+            state[unit][part]['' + inx] = true;
+          } else {
+            state[unit][part]['' + inx] = false;
+          }
+        }
+      }
+
+      if (isLatchState) {
+        publish();
+      } else if (isSwitchState === 1) {
+        // Apply customized rules to control latch...
+
+        // A
+        let value = new Buffer(3);
+        let t;
+        let j = 0;
+        for (let i = 0; i < 24; i++, t--) {
+          if (i % 8 == 0) {
+            t = 7;
+            if (i > 0) {
+              j++;
+            }
+            value[j] = 0x00;
+          }
+          if (state[unit]['switch']['' + i]) {
+            value[j] |= 0x01 << t;
+          }
+        }
+        changeLatchState(unit, value.toString('hex'));
+      }
+    }
+    console.log(state);
+
+    response.writeHead(200, {'Content-Type': 'text/plain'});
+    response.write(unit + "=" + data.toString("hex"));
+    response.end();
+    return;
+  }
+
+  // Callback from control unit.
+  if (uri.startsWith('/control')) {
+    console.log(new Date() + " Received callback from panel unit " + uri);
+    let piece = uri.split('/');
+    const unit = piece[piece.length - 2];
+    const inx = piece[piece.length - 1];
+
+    if (state && state[unit] && state[unit]['latch']) {
+
+      // A
+      let value = new Buffer(3);
+      let t;
+      let j = 0;
+      for (let i = 0; i < 24; i++, t++) {
+        if (i % 8 == 0) {
+          t = 0;
+          if (i > 0) {
+            j++;
+          }
+          value[j] = 0x00;
+        }
+        let currentValue = state[unit]['latch']['' + i];
+        if (i == inx) {
+          currentValue = !currentValue;
+        }
+        if (currentValue) {
+          value[j] |= 0x01 << t;
+        }
+      }
+      changeLatchState(unit, value.toString('hex'));
+    }
+
+    response.writeHead(200, {'Content-Type': 'application/json'});
+    response.write(JSON.stringify({
+      unit: unit,
+      inx: inx
+    }));
+    response.end();
+    return;
+  }
+
   // Get path name on the server's file system.
   let filename = path.join(process.cwd(), uri);
-  console.log('filename: ', filename);
+  console.log(new Date() + " Filename: " + filename);
 
   // Return the request resources.
   fs.exists(filename, (exists) => {
@@ -97,7 +220,7 @@ const server = http.createServer((request, response) => {
 
 // Listen http port.
 server.listen(HTTP_PORT, () => {
-  console.log(new Date() + " HTTP Server listening on %s", HTTP_PORT);
+  console.log(new Date() + " HTTP Server listening on " + HTTP_PORT);
 });
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -141,20 +264,44 @@ wsServer.on('request', (request) => {
   connections.push(connection);
 });
 
-// Simulate the server pushing event to clients
-setInterval(() => {
-  state = {
-    color: "red"
-  };
-  publish();
-}, 5000);
-
 // Publising event to all clients
 const publish = () => {
   for (let i = 0; i < connections.length; i++) {
     console.log((new Date()) + ' Send to ' + connections[i].remoteAddress);
     connections[i].sendUTF(JSON.stringify(state));
   }
+};
+
+const changeLatchState = (unit, data) => {
+  let host;
+  let port = 8080;
+  let header;
+  if (unit === 'A') {
+    host = '192.168.50.24';
+    header = 'A3';
+  } else {
+    console.error('Unknown unit ', unit);
+    return;
+  }
+
+  console.log("%s Change latch state to control unit: ", new Date(), data.toString("hex"));
+  http.request({
+    method: 'GET',
+    host: host,
+    port: port,
+    path: '/' + header + data.toString("hex"),
+    timeout: 1000
+  }, response => {
+    let data = [];
+    response.on('data', (chunk) => {
+      data.push(chunk);
+    });
+    response.on('end', () => {
+      console.log("%s Transmit Completed (%s)", new Date(), data.toString());
+    });
+  }).on("error", (err) => {
+    console.log("Error: " + err.message);
+  }).end();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
