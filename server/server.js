@@ -97,20 +97,38 @@ const server = http.createServer((request, response) => {
       let part;
       if (isLatchState === 1) {
         part = 'latch';
+        state[unit][part] = {};
       } else if (isSwitchState === 1) {
         part = 'switch';
+        if (state === undefined) { state = {}; }
+        if (state[unit] === undefined) { state[unit] = {}; }
+        if (state[unit][part] === undefined) { state[unit][part] = {}; }
+        requestStateSync();
       } else {
         console.error("Unknown header type");
         break;
       }
-      state[unit][part] = {};
 
       let j, inx;
       for (i++, j = 0, inx = 0; j < byteCount && j < data.length; i++, j++) {
         let v = data[i];
         console.log("byte[" + i + "]: ", v.toString(16));
         for (let k = 0; k < 8; k++, inx++) {
-          if (v >> k & 0x01) {
+          let newValue = v >> k & 0x01 === 0x01 ? true : false;
+
+          if (isSwitchState === 1) {
+            let oldValue = state[unit][part]['' + inx];
+
+            // console.log('turn on/off ' + inx);
+            // console.log('old = ' + oldValue);
+            // console.log('new = ' + newValue);
+
+            if (oldValue != newValue) {
+              changeLatchState(unit, inx);
+            }
+          }
+
+          if (newValue) {
             state[unit][part]['' + inx] = true;
           } else {
             state[unit][part]['' + inx] = false;
@@ -119,30 +137,30 @@ const server = http.createServer((request, response) => {
       }
 
       if (isLatchState) {
-        publish();
+        publishAll();
       } else if (isSwitchState === 1) {
         // Apply customized rules to control latch...
 
-        // A
-        let value = new Buffer(3);
-        let t;
-        let j = 0;
-        for (let i = 0; i < 24; i++, t--) {
-          if (i % 8 == 0) {
-            t = 7;
-            if (i > 0) {
-              j++;
-            }
-            value[j] = 0x00;
-          }
-          if (state[unit]['switch']['' + i]) {
-            value[j] |= 0x01 << t;
-          }
-        }
-        changeLatchState(unit, value.toString('hex'));
+        // // A
+        // let value = new Buffer(3);
+        // let t;
+        // let j = 0;
+        // for (let i = 0; i < 24; i++, t--) {
+        //   if (i % 8 == 0) {
+        //     t = 7;
+        //     if (i > 0) {
+        //       j++;
+        //     }
+        //     value[j] = 0x00;
+        //   }
+        //   if (state[unit]['switch']['' + i]) {
+        //     value[j] |= 0x01 << t;
+        //   }
+        // }
+        // changeLatchState(unit, value.toString('hex'));
       }
     }
-    console.log(state);
+    // console.log(state);
 
     response.writeHead(200, {'Content-Type': 'text/plain'});
     response.write(unit + "=" + data.toString("hex"));
@@ -157,30 +175,32 @@ const server = http.createServer((request, response) => {
     const unit = piece[piece.length - 2];
     const inx = piece[piece.length - 1];
 
-    if (state && state[unit] && state[unit]['latch']) {
+    changeLatchState(unit, inx);
 
-      // A
-      let value = new Buffer(3);
-      let t;
-      let j = 0;
-      for (let i = 0; i < 24; i++, t++) {
-        if (i % 8 == 0) {
-          t = 0;
-          if (i > 0) {
-            j++;
-          }
-          value[j] = 0x00;
-        }
-        let currentValue = state[unit]['latch']['' + i];
-        if (i == inx) {
-          currentValue = !currentValue;
-        }
-        if (currentValue) {
-          value[j] |= 0x01 << t;
-        }
-      }
-      changeLatchState(unit, value.toString('hex'));
-    }
+    // if (state && state[unit] && state[unit]['latch']) {
+
+    //   // A
+    //   let value = new Buffer(3);
+    //   let t;
+    //   let j = 0;
+    //   for (let i = 0; i < 24; i++, t++) {
+    //     if (i % 8 == 0) {
+    //       t = 0;
+    //       if (i > 0) {
+    //         j++;
+    //       }
+    //       value[j] = 0x00;
+    //     }
+    //     let currentValue = state[unit]['latch']['' + i];
+    //     if (i == inx) {
+    //       currentValue = !currentValue;
+    //     }
+    //     if (currentValue) {
+    //       value[j] |= 0x01 << t;
+    //     }
+    //   }
+    //   changeLatchState(unit, value.toString('hex'));
+    // }
 
     response.writeHead(200, {'Content-Type': 'application/json'});
     response.write(JSON.stringify({
@@ -221,6 +241,9 @@ const server = http.createServer((request, response) => {
 // Listen http port.
 server.listen(HTTP_PORT, () => {
   console.log(new Date() + " HTTP Server listening on " + HTTP_PORT);
+
+  // Request state sync for the first time.
+  requestStateSync('A');
 });
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -238,11 +261,9 @@ wsServer.on('request', (request) => {
   connection.on('message', (message) => {
     console.log('received: ', message);
     if (message.type === 'utf8') {
-      let data = JSON.parse(message.utf8Data);
-      state = {
-        color: data.color
-      };
-      publish();
+      //let data = JSON.parse(message.utf8Data);
+
+      publishAll();
     }
   });
 
@@ -260,19 +281,65 @@ wsServer.on('request', (request) => {
     }
   });
 
+  // Update state
+  publish(connection);
+
   // Add client connection to connection list.
   connections.push(connection);
 });
 
 // Publising event to all clients
-const publish = () => {
+const publishAll = () => {
   for (let i = 0; i < connections.length; i++) {
-    console.log((new Date()) + ' Send to ' + connections[i].remoteAddress);
-    connections[i].sendUTF(JSON.stringify(state));
+    publish(connections[i]);
   }
 };
 
-const changeLatchState = (unit, data) => {
+// Publising event to one client
+const publish = (connection) => {
+  if (!connection) return;
+  if (!state) return;
+  console.log((new Date()) + ' Send to ' + connection.remoteAddress);
+  connection.sendUTF(JSON.stringify(state));
+};
+
+const requestStateSync = unit => {
+  console.log('request state sync. unit ' + unit);
+
+  let host;
+  let port = 8080;
+  let header;
+  if (unit === 'A') {
+    host = '192.168.50.24';
+    header = 'C0';
+  } else {
+    console.error('Unknown unit ', unit);
+    return;
+  }
+
+  console.log("%s Request sync state: ", new Date());
+  http.request({
+    method: 'GET',
+    host: host,
+    port: port,
+    path: '/' + header,
+    timeout: 1000
+  }, response => {
+    let data = [];
+    response.on('data', (chunk) => {
+      data.push(chunk);
+    });
+    response.on('end', () => {
+      console.log("%s Transmit Completed", new Date());
+    });
+  }).on("error", (err) => {
+    console.log("Error: " + err.message);
+  }).end();
+};
+
+const changeLatchState = (unit, inx) => {
+  console.log('change latch state. unit ' + unit + ' inx ' + inx);
+
   let host;
   let port = 8080;
   let header;
@@ -284,7 +351,37 @@ const changeLatchState = (unit, data) => {
     return;
   }
 
-  console.log("%s Change latch state to control unit: ", new Date(), data.toString("hex"));
+  if (state === undefined) return;
+  if (state[unit] === undefined) {
+    console.log('no unit state');
+    return;
+  }
+  if (state[unit]['latch'] === undefined) {
+    console.log('no unit latch state', state[unit]);
+    return;
+  }
+
+  let value = new Buffer(3);
+  let t;
+  let j = 0;
+  for (let i = 0; i < 24; i++, t++) {
+    if (i % 8 == 0) {
+      t = 0;
+      if (i > 0) {
+        j++;
+      }
+      value[j] = 0x00;
+    }
+    let currentValue = state[unit]['latch']['' + i];
+    if (i == inx) {
+      currentValue = !currentValue;
+    }
+    if (currentValue) {
+      value[j] |= 0x01 << t;
+    }
+  }
+
+  console.log("%s Change latch state to control unit: ", new Date(), value.toString("hex"));
   http.request({
     method: 'GET',
     host: host,
