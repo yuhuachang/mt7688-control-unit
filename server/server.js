@@ -69,6 +69,57 @@ const server = http.createServer((request, response) => {
   }
 
   // Callback from control unit.
+  if (uri.startsWith('/switch')) {
+    console.log(new Date() + " Received callback from control unit " + uri);
+    let piece = uri.split('/');
+    const unit = piece[piece.length - 2];
+    const data = Buffer.from(piece[piece.length - 1], "hex");
+
+    let b = 0;
+    while (b < data.length) {
+      let header = data[b];
+      b++;
+      let isLatchState = header >> 7 & 0x01 == 0x01;
+      let isSwitchState = header >> 6 & 0x01 == 0x01;
+      let byteCount = header & 0x0F;
+
+      if (isLatchState) {
+        console.log("%s Receive latch state to update UI.", new Date());
+        if (state === undefined) { state = {}; }
+        if (state[unit] === undefined) { state[unit] = {}; }
+        state[unit]['latch'] = {};
+        let inx = 0;
+        for (let i = 0; i < byteCount; i++, b++) {
+          for (let j = 0; j < 8; j++, inx++) {
+            let v = (data[b + i] >> j & 0x01) === 0x01;
+            state[unit]['latch'][inx] = v;
+          }
+        }
+        console.log(state);
+      } else if (isSwitchState) {
+        console.log("%s Receive swtich state to change latch state.", new Date());
+        let inx = 0;
+        for (let i = 0; i < byteCount; i++, b++) {
+          for (let j = 0; j < 8; j++, inx++) {
+            if (data[b + i] >> j & 0x01 === 0x01) {
+              changeLatchState(unit, inx);
+            }
+          }
+        }
+      } else {
+        console.log("%s Unknown header value", new Date());
+        break;
+      }
+    }
+    console.log('done...');
+
+    response.writeHead(200, {'Content-Type': 'text/plain'});
+    response.write(unit + "=" + data.toString("hex"));
+    response.end();
+    return;
+  }
+
+  // Callback from control unit.
   if (uri.startsWith('/state')) {
     console.log(new Date() + " Received callback from control unit " + uri);
     let piece = uri.split('/');
@@ -94,16 +145,18 @@ const server = http.createServer((request, response) => {
       console.log('isSwitchState = ', isSwitchState);
       console.log('byteCount = ', byteCount);
 
+      if (state === undefined) { state = {}; }
+      if (state[unit] === undefined) { state[unit] = {}; }
+
       let part;
       if (isLatchState === 1) {
         part = 'latch';
+        if (state[unit][part] === undefined) { state[unit][part] = {}; }
         state[unit][part] = {};
       } else if (isSwitchState === 1) {
         part = 'switch';
-        if (state === undefined) { state = {}; }
-        if (state[unit] === undefined) { state[unit] = {}; }
         if (state[unit][part] === undefined) { state[unit][part] = {}; }
-        requestStateSync();
+        requestStateSync(unit);
       } else {
         console.error("Unknown header type");
         break;
@@ -128,11 +181,7 @@ const server = http.createServer((request, response) => {
             }
           }
 
-          if (newValue) {
-            state[unit][part]['' + inx] = true;
-          } else {
-            state[unit][part]['' + inx] = false;
-          }
+          state[unit][part]['' + inx] = newValue;
         }
       }
 
@@ -241,9 +290,11 @@ const server = http.createServer((request, response) => {
 // Listen http port.
 server.listen(HTTP_PORT, () => {
   console.log(new Date() + " HTTP Server listening on " + HTTP_PORT);
+  requestStateSync('C');
+});
 
-  // Request state sync for the first time.
-  requestStateSync('A');
+server.on('connection', socket => {
+
 });
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -309,9 +360,9 @@ const requestStateSync = unit => {
   let host;
   let port = 8080;
   let header;
-  if (unit === 'A') {
+  if (unit === 'C') {
     host = '192.168.50.24';
-    header = 'C0';
+    header = '80';
   } else {
     console.error('Unknown unit ', unit);
     return;
@@ -343,21 +394,24 @@ const changeLatchState = (unit, inx) => {
   let host;
   let port = 8080;
   let header;
-  if (unit === 'A') {
+  if (unit === 'C') {
     host = '192.168.50.24';
-    header = 'A3';
+    header = 'A3'; // A3
   } else {
     console.error('Unknown unit ', unit);
     return;
   }
 
-  if (state === undefined) return;
+  if (state === undefined) {
+    console.log('no state');
+    return;
+  }
   if (state[unit] === undefined) {
     console.log('no unit state');
     return;
   }
   if (state[unit]['latch'] === undefined) {
-    console.log('no unit latch state', state[unit]);
+    console.log('no unit latch state');
     return;
   }
 
@@ -386,7 +440,7 @@ const changeLatchState = (unit, inx) => {
     method: 'GET',
     host: host,
     port: port,
-    path: '/' + header + data.toString("hex"),
+    path: '/' + header + value.toString("hex"),
     timeout: 1000
   }, response => {
     let data = [];

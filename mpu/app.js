@@ -38,9 +38,11 @@ const server = http.createServer((request, response) => {
   }).on('end', () => {
     try {
       const code = request.url.substring(1);
+      console.log("%s Receive request %s", new Date(), code);
       let buffer = undefined;
-      if (code.length > 2) {
+      if (code.length >= 2) {
         const buffer = new Buffer(code, "hex");
+        console.log("%s Write to serial", new Date(), buffer);
         serial.write(buffer, (err) => {
           if (err) {
             console.trace(err);

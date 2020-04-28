@@ -40,6 +40,7 @@ uint8_t currentLatchValue[IC_595_COUNT]; // Current value to 595.
 uint8_t newLatchValue[IC_595_COUNT]; // New value read from MPU and will send to 595.
 uint8_t currentSwitchValue[IC_4021_COUNT]; // Current value from 4021.
 uint8_t newSwitchValue[IC_4021_COUNT]; // New current value from 4021.
+uint8_t diffSwitchValue[IC_4021_COUNT]; // Changes of 4021.
 
 void setup() {
   Serial.begin(9600); // debug serial
@@ -63,6 +64,8 @@ void setup() {
     currentLatchValue[i] = 0x00;
   }
   isToWriteOutput = true;
+
+  Serial.println("MCU Started...");
 }
 
 void loop() {
@@ -138,6 +141,7 @@ void loop() {
   // Read current 4021 state.
   readInput();
   for (i = 0; i < IC_4021_COUNT; i++) {
+    diffSwitchValue[i] = currentSwitchValue[i] ^ newSwitchValue[i];
     if (currentSwitchValue[i] != newSwitchValue[i]) {
       currentSwitchValue[i] = newSwitchValue[i];
       sendSwitchState = true;
@@ -148,11 +152,13 @@ void loop() {
   if (sendSwitchState) {
     header[0] = 0x40 | IC_4021_COUNT;
     Serial1.write(header, 1);
-    Serial1.write(currentSwitchValue, IC_4021_COUNT);
+    Serial1.write(diffSwitchValue, IC_4021_COUNT);
     sendSwitchState = false;
   }
 
   Serial1.flush();
+
+  delay(100);
 }
 
 void readInput() {
