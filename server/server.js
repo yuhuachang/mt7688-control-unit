@@ -84,7 +84,7 @@ const server = http.createServer((request, response) => {
       let byteCount = header & 0x0F;
 
       if (isLatchState) {
-        console.log("%s Receive latch state to update UI.", new Date());
+        console.log(new Date() + " Receive latch state to update UI");
         if (state === undefined) { state = {}; }
         if (state[unit] === undefined) { state[unit] = {}; }
         state[unit]['latch'] = {};
@@ -95,9 +95,9 @@ const server = http.createServer((request, response) => {
             state[unit]['latch'][inx] = v;
           }
         }
-        console.log(state);
+        // console.log(state);
       } else if (isSwitchState) {
-        console.log("%s Receive swtich state to change latch state.", new Date());
+        console.log(new Date() + " Receive swtich state to change latch state");
         let inx = 0;
         for (let i = 0; i < byteCount; i++, b++) {
           for (let j = 0; j < 8; j++, inx++) {
@@ -107,11 +107,11 @@ const server = http.createServer((request, response) => {
           }
         }
       } else {
-        console.log("%s Unknown header value", new Date());
+        console.log(new Date() + " Unknown header value");
         break;
       }
     }
-    console.log('done...');
+    // console.log('done...');
 
     response.writeHead(200, {'Content-Type': 'text/plain'});
     response.write(unit + "=" + data.toString("hex"));
@@ -368,7 +368,7 @@ const requestStateSync = unit => {
     return;
   }
 
-  console.log("%s Request sync state: ", new Date());
+  console.log(new Date() + " Request sync state: ");
   http.request({
     method: 'GET',
     host: host,
@@ -381,7 +381,7 @@ const requestStateSync = unit => {
       data.push(chunk);
     });
     response.on('end', () => {
-      console.log("%s Transmit Completed", new Date());
+      console.log(new Date() + " Transmit Completed");
     });
   }).on("error", (err) => {
     console.log("Error: " + err.message);
@@ -389,7 +389,7 @@ const requestStateSync = unit => {
 };
 
 const changeLatchState = (unit, inx) => {
-  console.log('change latch state. unit ' + unit + ' inx ' + inx);
+  console.log(new Date() + ' Change latch state. unit ' + unit + ' inx ' + inx);
 
   let host;
   let port = 8080;
@@ -435,7 +435,7 @@ const changeLatchState = (unit, inx) => {
     }
   }
 
-  console.log("%s Change latch state to control unit: ", new Date(), value.toString("hex"));
+  console.log(new Date() + " Change latch state to control unit: ", value.toString("hex"));
   http.request({
     method: 'GET',
     host: host,
@@ -448,7 +448,7 @@ const changeLatchState = (unit, inx) => {
       data.push(chunk);
     });
     response.on('end', () => {
-      console.log("%s Transmit Completed (%s)", new Date(), data.toString());
+      console.log(new Date() + " Transmit Completed", data.toString());
     });
   }).on("error", (err) => {
     console.log("Error: " + err.message);
