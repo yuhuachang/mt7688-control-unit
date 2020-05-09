@@ -3,13 +3,13 @@ $(() => {
 
   let buttons = [];
   for (let i = 0; i < 24; i++) {
-    let button = $('<div id="C' + i + '">Button A' + i + '</div>');
+    let button = $('<div id="A' + i + '">Button A' + i + '</div>');
     button.addClass('btn btn-outline-primary');
     button.on('click', () => {
       console.log('button ' + i);
 
       // call server to change state
-      fetch('/control/C/' + i)
+      fetch('/control/A/' + i)
         .then(response => {
           return response.json();
         })
@@ -41,6 +41,12 @@ $(() => {
       }
     }
   };
+
+  // setInterval(() => {
+  //   for (let i = 0; i < 3; i++) {
+  //     log('test');
+  //   }
+  // }, 1000);
 
   // if user is running mozilla then use it's built-in WebSocket
   window.WebSocket = window.WebSocket || window.MozWebSocket;
@@ -82,16 +88,17 @@ $(() => {
 
     connection.onmessage = (message) => {
       try {
-        log('State: ' + message.data);
         let state = JSON.parse(message.data);
+        log('State: ', state);
 
         // Update unit state
-        const unit = 'C';
+        const unit = 'A';
         if (state[unit] && state[unit]['latch']) {
           log("Update latch state");
           log(state[unit]['latch']);
           for (let i = 0; i < 24; i++) {
             const target = $('#' + unit + i);
+            log(target);
             if (state[unit]['latch'][i]) {
               target.removeClass('btn-outline-primary').addClass('btn-primary');
             } else {
@@ -103,12 +110,9 @@ $(() => {
         }
       } catch (e) {
         $('#connStatus').text('Connection error: ' + e);
-        log(e.message);
         return;
       }
     };
-
-    console.log(connection);
   };
 
   // Run every second to recover the connection if connection is lost.

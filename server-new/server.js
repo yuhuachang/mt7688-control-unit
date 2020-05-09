@@ -120,6 +120,104 @@ const server = http.createServer((request, response) => {
   }
 
   // Callback from control unit.
+  if (uri.startsWith('/state')) {
+    console.log(new Date() + " Received callback from control unit " + uri);
+    let piece = uri.split('/');
+    const unit = piece[piece.length - 2];
+    const data = Buffer.from(piece[piece.length - 1], "hex");
+
+    // Decode current state and publish to client.
+    if (!state) {
+      state = {};
+    }
+    if (!state[unit]) {
+      state[unit] = {};
+    }
+
+    for (let i = 0; i < data.length; ) {
+      let header = data[i];
+      let isLatchState = header >> 7 & 0x01 == 0x01;
+      let isSwitchState = header >> 6 & 0x01 == 0x01;
+      let byteCount = header & 0x0F;
+
+      console.log('byte[' + i + '] header = ', header.toString(16));
+      console.log('isLatchState = ', isLatchState);
+      console.log('isSwitchState = ', isSwitchState);
+      console.log('byteCount = ', byteCount);
+
+      if (state === undefined) { state = {}; }
+      if (state[unit] === undefined) { state[unit] = {}; }
+
+      let part;
+      if (isLatchState === 1) {
+        part = 'latch';
+        if (state[unit][part] === undefined) { state[unit][part] = {}; }
+        state[unit][part] = {};
+      } else if (isSwitchState === 1) {
+        part = 'switch';
+        if (state[unit][part] === undefined) { state[unit][part] = {}; }
+        requestStateSync(unit);
+      } else {
+        console.error("Unknown header type");
+        break;
+      }
+
+      let j, inx;
+      for (i++, j = 0, inx = 0; j < byteCount && j < data.length; i++, j++) {
+        let v = data[i];
+        console.log("byte[" + i + "]: ", v.toString(16));
+        for (let k = 0; k < 8; k++, inx++) {
+          let newValue = v >> k & 0x01 === 0x01 ? true : false;
+
+          if (isSwitchState === 1) {
+            let oldValue = state[unit][part]['' + inx];
+
+            // console.log('turn on/off ' + inx);
+            // console.log('old = ' + oldValue);
+            // console.log('new = ' + newValue);
+
+            if (oldValue != newValue) {
+              changeLatchState(unit, inx);
+            }
+          }
+
+          state[unit][part]['' + inx] = newValue;
+        }
+      }
+
+      if (isLatchState) {
+        publishAll();
+      } else if (isSwitchState === 1) {
+        // Apply customized rules to control latch...
+
+        // // A
+        // let value = new Buffer(3);
+        // let t;
+        // let j = 0;
+        // for (let i = 0; i < 24; i++, t--) {
+        //   if (i % 8 == 0) {
+        //     t = 7;
+        //     if (i > 0) {
+        //       j++;
+        //     }
+        //     value[j] = 0x00;
+        //   }
+        //   if (state[unit]['switch']['' + i]) {
+        //     value[j] |= 0x01 << t;
+        //   }
+        // }
+        // changeLatchState(unit, value.toString('hex'));
+      }
+    }
+    // console.log(state);
+
+    response.writeHead(200, {'Content-Type': 'text/plain'});
+    response.write(unit + "=" + data.toString("hex"));
+    response.end();
+    return;
+  }
+
+  // Callback from control unit.
   if (uri.startsWith('/control')) {
     console.log(new Date() + " Received callback from panel unit " + uri);
     let piece = uri.split('/');

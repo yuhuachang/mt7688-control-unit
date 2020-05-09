@@ -38,9 +38,10 @@ bool sendSwitchState;
 int byteCount; // Bytes to read/write 595.
 uint8_t currentLatchValue[IC_595_COUNT]; // Current value to 595.
 uint8_t newLatchValue[IC_595_COUNT]; // New value read from MPU and will send to 595.
+uint8_t readLatchMask[IC_595_COUNT];
+uint8_t readLatchValue[IC_595_COUNT];
 uint8_t currentSwitchValue[IC_4021_COUNT]; // Current value from 4021.
 uint8_t newSwitchValue[IC_4021_COUNT]; // New current value from 4021.
-uint8_t diffSwitchValue[IC_4021_COUNT]; // Changes of 4021.
 
 void setup() {
   Serial.begin(9600); // debug serial
@@ -105,8 +106,30 @@ void loop() {
         byteCount = IC_595_COUNT;
       }
 
-      // Read serial values
-      Serial1.readBytes(newLatchValue, byteCount);
+      // Read mask
+      Serial1.readBytes(readLatchMask, byteCount);
+
+      // Read values
+      Serial1.readBytes(readLatchValue, byteCount);
+
+      // Apply read values
+      for (i = 0; i < byteCount; i++) {
+        newLatchValue[i] = currentLatchValue[i] & readLatchMask[i] | readLatchValue[i];
+        Serial.print(i);
+        Serial.print(": ");
+        Serial.print(currentLatchValue[i], BIN);
+        Serial.print(" & ");
+        Serial.print(readLatchMask[i], BIN);
+        Serial.print(" = ");
+        Serial.print(currentLatchValue[i] & readLatchMask[i], BIN);
+        Serial.print(" | ");
+        Serial.print(readLatchValue[i], BIN);
+        Serial.print(" = ");
+        Serial.print(currentLatchValue[i] & readLatchMask[i] | readLatchValue[i], BIN);
+        Serial.print(" = ");
+        Serial.print(newLatchValue[i], BIN);
+        Serial.println();
+      }
     }
 
     // Clear input
@@ -116,7 +139,7 @@ void loop() {
   }
 
   // Copy values and check if need to write to 595.
-  for (i = 0; i < byteCount; i++) {
+  for (i = 0; i < IC_595_COUNT; i++) {
     if (currentLatchValue[i] != newLatchValue[i]) {
       isToWriteOutput = true;
       currentLatchValue[i] = newLatchValue[i];
@@ -135,16 +158,16 @@ void loop() {
     header[0] = 0x80 | IC_595_COUNT;
     Serial1.write(header, 1);
     Serial1.write(currentLatchValue, IC_595_COUNT);
+    Serial1.flush();
     sendLatchState = false;
   }
 
   // Read current 4021 state.
   readInput();
   for (i = 0; i < IC_4021_COUNT; i++) {
-    diffSwitchValue[i] = currentSwitchValue[i] ^ newSwitchValue[i];
     if (currentSwitchValue[i] != newSwitchValue[i]) {
-      currentSwitchValue[i] = newSwitchValue[i];
       sendSwitchState = true;
+      break;
     }
   }
 
@@ -152,11 +175,17 @@ void loop() {
   if (sendSwitchState) {
     header[0] = 0x40 | IC_4021_COUNT;
     Serial1.write(header, 1);
-    Serial1.write(diffSwitchValue, IC_4021_COUNT);
+    Serial1.write(currentSwitchValue, IC_4021_COUNT);
+    Serial1.write(newSwitchValue, IC_4021_COUNT);
+    Serial1.flush();
     sendSwitchState = false;
-  }
 
-  Serial1.flush();
+    for (i = 0; i < IC_4021_COUNT; i++) {
+      if (currentSwitchValue[i] != newSwitchValue[i]) {
+        currentSwitchValue[i] = newSwitchValue[i];
+      }
+    }
+  }
 
   delay(100);
 }
