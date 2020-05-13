@@ -136,13 +136,13 @@ void loop() {
     while (Serial1.available()) {
       Serial1.read();
     }
-  }
 
-  // Copy values and check if need to write to 595.
-  for (i = 0; i < IC_595_COUNT; i++) {
-    if (currentLatchValue[i] != newLatchValue[i]) {
-      isToWriteOutput = true;
-      currentLatchValue[i] = newLatchValue[i];
+    // Copy values and check if need to write to 595.
+    for (i = 0; i < IC_595_COUNT; i++) {
+      if (currentLatchValue[i] != newLatchValue[i]) {
+        isToWriteOutput = true;
+        currentLatchValue[i] = newLatchValue[i];
+      }
     }
   }
 
@@ -187,7 +187,7 @@ void loop() {
     }
   }
 
-  delay(100);
+  delay(200);
 }
 
 void readInput() {
@@ -214,6 +214,7 @@ void writeOutput() {
   digitalWrite(IC_595_STCP_PIN, LOW);
   for (i = IC_595_COUNT - 1; i >= 0; i--) {
     shiftOut(IC_595_DS_PIN, IC_595_SHCP_PIN, MSBFIRST, currentLatchValue[i]);
+//    shiftOut(IC_595_DS_PIN, IC_595_SHCP_PIN, LSBFIRST, currentLatchValue[i]);
 
     Serial.print("Write ");
     Serial.print(i);

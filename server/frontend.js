@@ -1,24 +1,37 @@
 $(() => {
   "use strict";
 
-  let buttons = [];
+  let controls = {};
   for (let i = 0; i < 24; i++) {
-    let button = $('<div id="C' + i + '">Button A' + i + '</div>');
+    let key = 'C' + i;
+    let button = $('<div id="' + key + '">' + key + '</div>');
     button.addClass('btn btn-outline-primary');
     button.on('click', () => {
-      console.log('button ' + i);
+      let payload = {
+        "header": {
+          "state change": true,
+          "state sync": true
+        },
+        "switch": {}
+      };
+      payload.switch[key] = controls[key] ? !controls[key].state : true;
 
-      // call server to change state
-      fetch('/control/C/' + i)
-        .then(response => {
-          return response.json();
-        })
-        .then(data => {
-          console.log(data);
-        });
+      log(key + ' click: ' + JSON.stringify(payload));
+      fetch('/switch', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      }).then(response => {
+        return response.json();
+      })
+      .then(data => {
+        console.log(data);
+      });
     });
     $('#app').append(button);
-    buttons.push(button);
+    controls[key] = {
+      state: false,
+      control: button
+    };
   }
 
   const log = msg => {
@@ -84,23 +97,31 @@ $(() => {
       try {
         log('State: ' + message.data);
         let state = JSON.parse(message.data);
+        log("Update latch state");
 
-        // Update unit state
-        const unit = 'C';
-        if (state[unit] && state[unit]['latch']) {
-          log("Update latch state");
-          log(state[unit]['latch']);
-          for (let i = 0; i < 24; i++) {
-            const target = $('#' + unit + i);
-            if (state[unit]['latch'][i]) {
-              target.removeClass('btn-outline-primary').addClass('btn-primary');
-            } else {
-              target.removeClass('btn-primary').addClass('btn-outline-primary');
-            }
+        Object.keys(state).forEach(key => {
+          // log(key);
+          if (controls.hasOwnProperty(key)) {
+            controls[key].state = state[key];
           }
-        } else {
-          log("No latch state");
-        }
+        });
+
+        Object.keys(controls).forEach(key => {
+          let button = controls[key].control;
+          if (controls[key].state) {
+            button.removeClass('btn-outline-primary').addClass('btn-primary');
+          } else {
+            button.removeClass('btn-primary').addClass('btn-outline-primary');
+          }
+        });
+        // for (let i = 0; i < 24; i++) {
+        //   const target = $('#' + unit + i);
+        //   if (state[unit]['latch'][i]) {
+        //     target.removeClass('btn-outline-primary').addClass('btn-primary');
+        //   } else {
+        //     target.removeClass('btn-primary').addClass('btn-outline-primary');
+        //   }
+        // }
       } catch (e) {
         $('#connStatus').text('Connection error: ' + e);
         log(e.message);

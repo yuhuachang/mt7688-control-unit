@@ -43,9 +43,10 @@ const server = http.createServer((request, response) => {
       response.end();
     } else if (request.method === 'POST') {
       try {
-        let body = JSON.parse(Buffer.concat(buffer).toString());
+        console.log("%s Received POST request:", new Date(), buffer.toString());
 
-        console.log(body);
+        let body = JSON.parse(buffer.toString());
+        console.log("body:", body);
 
         let byteCount = 0;
         if (config.id === 'A') {
@@ -71,7 +72,7 @@ const server = http.createServer((request, response) => {
         for (let i = 1, inx = 0; i <= byteCount; i++) {
           bytes[i] = 0x00;
           bytes[i + byteCount] = 0x00;
-          for (let j = 7; j >= 0; j--, inx++) {
+          for (let j = 0; j < 8; j++, inx++) {
             let key = config.id + inx;
             let v = 0x01 << j;
             if (body.switch.hasOwnProperty(key)) {
@@ -163,10 +164,10 @@ serial.on('data', (data) => {
           latch[config.id + inx] = v;
         }
       }
-      console.log(JSON.stringify({
+
+      sendToServer('/latch', JSON.stringify({
         "latch": latch
       }));
-
     } else if (isSwitchState) {
       console.log("%s Received swtich state from MCU", new Date());
 
@@ -195,38 +196,45 @@ serial.on('data', (data) => {
       }
       b += byteCount;
 
-      console.log(JSON.stringify({
+      sendToServer('/switch', JSON.stringify({
         "header": {
           "state change": true,
           "state sync": true
         },
         "switch": state
       }));
-
     } else {
       console.log(new Date() + " Unknown header value");
       break;
     }
   }
-
-  // if (config) {
-  //   console.log("%s Update state to server: ", new Date(), data.toString("hex"));
-  //   http.request({
-  //     method: 'GET',
-  //     host: config.webhook.host,
-  //     port: config.webhook.port,
-  //     path: config.webhook.path + '/' + config.id + '/' + data.toString("hex"),
-  //     timeout: 1000
-  //   }, response => {
-  //     let data = [];
-  //     response.on('data', (chunk) => {
-  //       data.push(chunk);
-  //     });
-  //     response.on('end', () => {
-  //       console.log("%s Transmit Completed (%s)", new Date(), data.toString());
-  //     });
-  //   }).on("error", (err) => {
-  //     console.log("Error: " + err.message);
-  //   }).end();
-  // }
 });
+
+const sendToServer = (path, body) => {
+  console.log(body);
+
+  const req = http.request({
+    method: 'POST',
+    host: config.webhook.host,
+    port: config.webhook.port,
+    path: path,
+    timeout: 1000,
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Length': body.length
+    }
+  }, response => {
+    let data = [];
+    response.on('data', (chunk) => {
+      data.push(chunk);
+    });
+    response.on('end', () => {
+      console.log("%s Transmit Completed (%s)", new Date(), data.toString());
+    });
+  });
+  req.on("error", (err) => {
+    console.log("Error: " + err.message);
+  });
+  req.write(body);
+  req.end();
+};
