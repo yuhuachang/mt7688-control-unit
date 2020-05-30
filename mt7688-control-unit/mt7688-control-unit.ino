@@ -27,8 +27,10 @@
 #define IC_595_STCP_PIN 11
 #define IC_595_SHCP_PIN 12
 
-#define IC_4021_COUNT 3
-#define IC_595_COUNT 3
+#define IC_4021_COUNT 5
+#define IC_595_COUNT 4
+
+#define DEBUG false
 
 int i, j, t;
 bool isToWriteOutput;
@@ -44,7 +46,9 @@ uint8_t currentSwitchValue[IC_4021_COUNT]; // Current value from 4021.
 uint8_t newSwitchValue[IC_4021_COUNT]; // New current value from 4021.
 
 void setup() {
-  Serial.begin(9600); // debug serial
+  if (DEBUG) {
+    Serial.begin(9600); // debug serial
+  }
   Serial1.begin(57600); // to MPU
 
   pinMode(IC_4021_CLOCK_PIN, OUTPUT);
@@ -66,7 +70,9 @@ void setup() {
   }
   isToWriteOutput = true;
 
-  Serial.println("MCU Started...");
+  if (DEBUG) {
+    Serial.println("MCU Started...");
+  }
 }
 
 void loop() {
@@ -79,29 +85,39 @@ void loop() {
 
     // Read request header (first byte)
     Serial1.readBytes(header, 1);
-    Serial.print("header = 0x");
-    Serial.println(header[0], HEX);
+    if (DEBUG) {
+      Serial.print("header = 0x");
+      Serial.println(header[0], HEX);
+    }
 
     sendLatchState = false;
     sendSwitchState = false;
 
     if (header[0] >> 7 & 0x01 == HIGH) {
-      Serial.println("Request to read latch state (595 state)");
+      if (DEBUG) {
+        Serial.println("Request to read latch state (595 state)");
+      }
       sendLatchState = true;
     }
     
     if (header[0] >> 6 & 0x01 == HIGH) {
-      Serial.println("Request to read switch state (4021 state)");
+      if (DEBUG) {
+        Serial.println("Request to read switch state (4021 state)");
+      }
       sendSwitchState = true;
     }
 
     if (header[0] >> 5 & 0x01 == HIGH) {
-      Serial.println("Request to write latch state (595 state)");
+      if (DEBUG) {
+        Serial.println("Request to write latch state (595 state)");
+      }
 
       // Determine request bytes.
       byteCount = header[0] & 0x0F;
-      Serial.print("byteCount = ");
-      Serial.println(byteCount);
+      if (DEBUG) {
+        Serial.print("byteCount = ");
+        Serial.println(byteCount);
+      }
       if (byteCount > IC_595_COUNT) {
         byteCount = IC_595_COUNT;
       }
@@ -115,20 +131,22 @@ void loop() {
       // Apply read values
       for (i = 0; i < byteCount; i++) {
         newLatchValue[i] = currentLatchValue[i] & readLatchMask[i] | readLatchValue[i];
-        Serial.print(i);
-        Serial.print(": ");
-        Serial.print(currentLatchValue[i], BIN);
-        Serial.print(" & ");
-        Serial.print(readLatchMask[i], BIN);
-        Serial.print(" = ");
-        Serial.print(currentLatchValue[i] & readLatchMask[i], BIN);
-        Serial.print(" | ");
-        Serial.print(readLatchValue[i], BIN);
-        Serial.print(" = ");
-        Serial.print(currentLatchValue[i] & readLatchMask[i] | readLatchValue[i], BIN);
-        Serial.print(" = ");
-        Serial.print(newLatchValue[i], BIN);
-        Serial.println();
+        if (DEBUG) {
+          Serial.print(i);
+          Serial.print(": ");
+          Serial.print(currentLatchValue[i], BIN);
+          Serial.print(" & ");
+          Serial.print(readLatchMask[i], BIN);
+          Serial.print(" = ");
+          Serial.print(currentLatchValue[i] & readLatchMask[i], BIN);
+          Serial.print(" | ");
+          Serial.print(readLatchValue[i], BIN);
+          Serial.print(" = ");
+          Serial.print(currentLatchValue[i] & readLatchMask[i] | readLatchValue[i], BIN);
+          Serial.print(" = ");
+          Serial.print(newLatchValue[i], BIN);
+          Serial.println();
+        }
       }
     }
 
@@ -167,6 +185,10 @@ void loop() {
   for (i = 0; i < IC_4021_COUNT; i++) {
     if (currentSwitchValue[i] != newSwitchValue[i]) {
       sendSwitchState = true;
+
+      // wait signal to be stable when state changed.
+      delay(20);
+
       break;
     }
   }
@@ -186,8 +208,6 @@ void loop() {
       }
     }
   }
-
-  delay(200);
 }
 
 void readInput() {
@@ -216,10 +236,12 @@ void writeOutput() {
     shiftOut(IC_595_DS_PIN, IC_595_SHCP_PIN, MSBFIRST, currentLatchValue[i]);
 //    shiftOut(IC_595_DS_PIN, IC_595_SHCP_PIN, LSBFIRST, currentLatchValue[i]);
 
-    Serial.print("Write ");
-    Serial.print(i);
-    Serial.print(": ");
-    Serial.println(currentLatchValue[i], BIN);
+    if (DEBUG) {
+      Serial.print("Write ");
+      Serial.print(i);
+      Serial.print(": ");
+      Serial.println(currentLatchValue[i], BIN);
+    }
   }
   digitalWrite(IC_595_STCP_PIN, HIGH);
   isToWriteOutput = false;

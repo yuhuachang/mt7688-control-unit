@@ -18,9 +18,25 @@ const fs = require('fs');
 const HTTP_PORT = 8080;
 const CONFIG_FILE = "/root/config.json";
 
+let isProd = false;
+process.argv.forEach(argc => {
+  if (argc === '--prod') {
+    isProd = true;
+  }
+});
+
+const log = (msg, arg) => {
+  if (isProd) return;
+  if (arg === undefined) {
+    console.log("%s %s", new Date(), msg);
+  } else {
+    console.log("%s %s", new Date(), msg, arg);
+  }
+};
+
 // Load config
 let config;
-console.log('Load Config...');
+log('Load Config...');
 try {
   const rawData = fs.readFileSync(CONFIG_FILE);
   config = JSON.parse(rawData);
@@ -43,10 +59,10 @@ const server = http.createServer((request, response) => {
       response.end();
     } else if (request.method === 'POST') {
       try {
-        console.log("%s Received POST request:", new Date(), buffer.toString());
+        log("Received POST request:", buffer.toString());
 
         let body = JSON.parse(buffer.toString());
-        console.log("body:", body);
+        log("body:", body);
 
         let byteCount = 0;
         if (config.id === 'A') {
@@ -85,9 +101,9 @@ const server = http.createServer((request, response) => {
               bytes[i] |= v;
             }
           }
-          console.log('' + i + ': mask ' + bytes[i] + ' data ' + bytes[i + byteCount]);
+          log('' + i + ': mask ' + bytes[i] + ' data ' + bytes[i + byteCount]);
         }
-        console.log('sends bytes to MCU = ', bytes);
+        log('sends bytes to MCU = ', bytes);
 
         serial.write(bytes, (err) => {
           if (err) {
@@ -124,14 +140,14 @@ const serial = new SerialPort("/dev/ttyS0", { baudrate: 57600 });
 
 serial.on('open', (err) => {
   if (err) {
-    console.log('serial port opened has error:', err);
+    log('serial port opened has error:', err);
     process.exit(1);
   }
-  console.log('serial port opened.');
+  log('serial port opened.');
 
   // Start http server after serial is opened correctly.
   server.listen(HTTP_PORT, () => {
-    console.log("%s HTTP Server listening on %s", new Date(), HTTP_PORT);
+    log("HTTP Server listening on " + HTTP_PORT);
   });
 });
 
@@ -140,7 +156,7 @@ serial.on('error', (e) => {
 });
 
 serial.on('data', (data) => {
-  console.log("%s Receive data from MCU: ", new Date(), data);
+  log("Receive data from MCU:", data);
 
   let b = 0;
   while (b < data.length) {
@@ -151,7 +167,7 @@ serial.on('data', (data) => {
     let byteCount = header & 0x0F;
 
     if (isLatchState) {
-      console.log("%s Received latch state from MCU", new Date());
+      log("Received latch state from MCU");
 
       let latch = {};
 
@@ -159,8 +175,6 @@ serial.on('data', (data) => {
       for (let i = 0; i < byteCount; i++, b++) {
         for (let j = 0; j < 8; j++, inx++) {
           let v = data[b] >> j & 0x01 === 0x01 ? true : false;
-          // console.log("  %s = %s", inx, v);
-
           latch[config.id + inx] = v;
         }
       }
@@ -169,7 +183,7 @@ serial.on('data', (data) => {
         "latch": latch
       }));
     } else if (isSwitchState) {
-      console.log("%s Received swtich state from MCU", new Date());
+      log("Received swtich state from MCU");
 
       let state = {};
 
@@ -178,18 +192,10 @@ serial.on('data', (data) => {
         let oldValue = data[b];
         let newValue = data[b + byteCount];
         let diffValue = oldValue ^ newValue;
-        // console.log('old = ', b);
-        // console.log('new = ', b + byteCount);
-        // console.log('oldValue = ', oldValue);
-        // console.log('newValue = ', newValue);
-        // console.log('diffValue = ', diffValue);
-        // console.log('------------------------');
 
         for (let j = 7; j >= 0; j--, inx++) {
           if (diffValue >> j & 0x01 === 0x01) {
             let v = newValue >> j & 0x01 === 0x01 ? true : false;
-            // console.log('  S ' + inx + ' = ' + v);
-
             state[config.id + inx] = v;
           }
         }
@@ -204,14 +210,14 @@ serial.on('data', (data) => {
         "switch": state
       }));
     } else {
-      console.log(new Date() + " Unknown header value");
+      log("Unknown header value");
       break;
     }
   }
 });
 
 const sendToServer = (path, body) => {
-  console.log(body);
+  log(body);
 
   const req = http.request({
     method: 'POST',
@@ -229,11 +235,11 @@ const sendToServer = (path, body) => {
       data.push(chunk);
     });
     response.on('end', () => {
-      console.log("%s Transmit Completed (%s)", new Date(), data.toString());
+      log("Transmit Completed", data.toString());
     });
   });
   req.on("error", (err) => {
-    console.log("Error: " + err.message);
+    log("Error: ", err);
   });
   req.write(body);
   req.end();

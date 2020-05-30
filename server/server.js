@@ -131,31 +131,37 @@ const server = http.createServer((request, response) => {
         // }
         let payload = JSON.stringify(body);
 
-        console.log(new Date() + " Send to MPU", data.toString());
-        const req = http.request({
-          method: 'POST',
-          host: '192.168.50.24',
-          port: 8080,
-          path: '/',
-          timeout: 1000,
-          headers: {
-            'Content-Type': 'application/json',
-            'Content-Length': payload.length
-          }
-        }, response => {
-          let buffer = [];
-          response.on('data', (chunk) => {
-            buffer.push(chunk);
+        const sendToMpu = (ip, payload) => {
+          console.log(new Date() + " Send to MPU", data.toString());
+          const req = http.request({
+            method: 'POST',
+            host: ip,
+            port: 8080,
+            path: '/',
+            timeout: 1000,
+            headers: {
+              'Content-Type': 'application/json',
+              'Content-Length': payload.length
+            }
+          }, response => {
+            let buffer = [];
+            response.on('data', (chunk) => {
+              buffer.push(chunk);
+            });
+            response.on('end', () => {
+              console.log(new Date() + " Transmit Completed (%s)", buffer.toString());
+            });
           });
-          response.on('end', () => {
-            console.log(new Date() + " Transmit Completed (%s)", buffer.toString());
+          req.on("error", (err) => {
+            console.log("Error: " + err.message);
           });
-        });
-        req.on("error", (err) => {
-          console.log("Error: " + err.message);
-        });
-        req.write(payload);
-        req.end();
+          req.write(payload);
+          req.end();
+        };
+
+        sendToMpu('192.168.50.22', payload);
+        sendToMpu('192.168.50.127', payload);
+        sendToMpu('192.168.50.24', payload);
 
       } else if (uri === '/latch') {
         console.log(new Date() + " Received latch state from MPU", data.toString());
@@ -177,6 +183,8 @@ const server = http.createServer((request, response) => {
 // Listen http port.
 server.listen(HTTP_PORT, () => {
   console.log(new Date() + " HTTP Server listening on " + HTTP_PORT);
+  requestStateSync('A');
+  requestStateSync('B');
   requestStateSync('C');
 });
 
@@ -243,7 +251,13 @@ const requestStateSync = unit => {
   let host;
   let port = 8080;
   let header;
-  if (unit === 'C') {
+  if (unit === 'A') {
+    host = '192.168.50.22';
+    header = '80';
+  } else if (unit === 'B') {
+      host = '192.168.50.127';
+      header = '80';
+  } else if (unit === 'C') {
     host = '192.168.50.24';
     header = '80';
   } else {

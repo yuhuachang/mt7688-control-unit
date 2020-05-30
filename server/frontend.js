@@ -2,10 +2,10 @@ $(() => {
   "use strict";
 
   let controls = {};
-  for (let i = 0; i < 24; i++) {
-    let key = 'C' + i;
-    let button = $('<div id="' + key + '">' + key + '</div>');
-    button.addClass('btn btn-outline-primary');
+
+  const addButton = key => {
+    let button = $('<div><img width="22px"><div>' + key + '</div></div>');
+    button.addClass('my-btn my-btn-1x1');
     button.on('click', () => {
       let payload = {
         "header": {
@@ -32,7 +32,36 @@ $(() => {
       state: false,
       control: button
     };
+  };
+
+  for (let i = 0; i < 32; i++) {
+    let key = 'A' + i;
+    addButton(key);
   }
+  for (let i = 0; i < 8; i++) {
+    let key = 'B' + i;
+    addButton(key);
+  }
+  for (let i = 0; i < 24; i++) {
+    let key = 'C' + i;
+    addButton(key);
+  }
+
+  const turnOn = (key) => {
+    let button = controls[key].control;
+    button.removeClass('my-btn-off').addClass('my-btn-on');
+    let img = button.find('img');
+    img.attr('src', 'light-on.png');
+    img.attr('style', 'opacity: 1;');
+  };
+
+  const turnOff = (key) => {
+    let button = controls[key].control;
+    button.removeClass('my-btn-on').addClass('my-btn-off');
+    let img = button.find('img');
+    img.attr('src', 'light-off.png');
+    img.attr('style', 'opacity: 0.4;');
+  };
 
   const log = msg => {
     let d = new Date();
@@ -107,21 +136,12 @@ $(() => {
         });
 
         Object.keys(controls).forEach(key => {
-          let button = controls[key].control;
           if (controls[key].state) {
-            button.removeClass('btn-outline-primary').addClass('btn-primary');
+            turnOn(key);
           } else {
-            button.removeClass('btn-primary').addClass('btn-outline-primary');
+            turnOff(key);
           }
         });
-        // for (let i = 0; i < 24; i++) {
-        //   const target = $('#' + unit + i);
-        //   if (state[unit]['latch'][i]) {
-        //     target.removeClass('btn-outline-primary').addClass('btn-primary');
-        //   } else {
-        //     target.removeClass('btn-primary').addClass('btn-outline-primary');
-        //   }
-        // }
       } catch (e) {
         $('#connStatus').text('Connection error: ' + e);
         log(e.message);
