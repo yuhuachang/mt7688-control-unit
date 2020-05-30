@@ -38,52 +38,7 @@ Central server receive signals from swtiches and translates to latch control sig
 
 ## Swtich Latch Control
 
-```mermaid
-sequenceDiagram
-
-    participant C as Client
-    participant S as Server
-    participant MPU
-    participant MCU
-
-  opt request for latch state change from switch
-    MCU->>MPU: switch state change (HEX) (A)
-    activate MPU
-    MPU->>S: switch state change (JSON) (B)
-    deactivate MPU
-    activate S
-    S->>MPU: state sync request (JSON) (B)
-    deactivate S
-    activate MPU
-    MPU->>MCU: state sync request (HEX) (C)
-    deactivate MPU
-  end
-  opt request for latch state
-    C->>S: state sync request (JSON) (B)
-    activate S
-    S->>MPU: state sync request (JSON) (B)
-    deactivate S
-    activate MPU
-    MPU->>MCU: state sync request (HEX) (C)
-    deactivate MPU
-  end
-  opt request for latch state change
-    C->>S: switch state signal (JSON) (B)
-    activate S
-    S->>MPU: state sync request (JSON) (B)
-    deactivate S
-    activate MPU
-    MPU->>MCU: state sync request (HEX) (C)
-    deactivate MPU
-  end
-    MCU->>MPU: latch state (HEX) (D)
-    activate MPU
-    MPU->>S: latch state (JSON) (E)
-    deactivate MPU
-    activate S
-    S->>C: latch state (JSON) (E)
-    deactivate S
-```
+![Control Signal Graph](https://yuhuachang.github.io/repo/mt7688-control-unit/signal-graph.jpg)
 
 ### A. switch change (MCU to MPU)
 #### switch state
