@@ -110,29 +110,39 @@ const server = http.createServer((request, response) => {
 
         const requestStateChange = body.header['state change'];
         const requestStateSync = body.header['state sync'];
-        const switchState = body.switch;
+        const switchState = body.switch === undefined ? {} : body.switch; // physical button
+        const webState = body.web === undefined ? {} : body.web; // web ui button
 
         console.log('requestStateChange = ' + requestStateChange);
         console.log('requestStateSync = ' + requestStateSync);
         console.log('switchState: ', switchState);
+        console.log('webState: ', webState);
 
         console.log('applying special logic to control latches...');
-        // TODO: apply logic...
-        // let state = {
-        //   header: {
 
-        //   }
-        // };
+        const payload = {
+          header: {
+            'state change': requestStateChange,
+            'state sync': requestStateSync
+          },
+          switch: {}
+        };
 
-        // for (let inx = 0; inx < 24; inx++) {
-        //   if (switchState.hasOwnProperty('C' + inx)) {
+        // Apply physical button logic
+        if (switchState.hasOwnProperty('B5')) {
+          payload.switch.B5 = switchState.B5;
+          payload.switch.B7 = switchState.B5;
+        }
 
-        //   }
-        // }
-        let payload = JSON.stringify(body);
+        // Apply physical button logic
+        Object.keys(webState).forEach(key => {
+          payload.switch[key] = webState[key];
+        });
 
-        const sendToMpu = (ip, payload) => {
-          console.log(new Date() + " Send to MPU", data.toString());
+        console.log('payload: ', payload);
+
+        const sendToMpu = (ip, data) => {
+          console.log(new Date() + " Send to MPU", data);
           const req = http.request({
             method: 'POST',
             host: ip,
@@ -141,7 +151,7 @@ const server = http.createServer((request, response) => {
             timeout: 1000,
             headers: {
               'Content-Type': 'application/json',
-              'Content-Length': payload.length
+              'Content-Length': data.length
             }
           }, response => {
             let buffer = [];
@@ -155,13 +165,13 @@ const server = http.createServer((request, response) => {
           req.on("error", (err) => {
             console.log("Error: " + err.message);
           });
-          req.write(payload);
+          req.write(data);
           req.end();
         };
 
-        sendToMpu('192.168.50.22', payload);
-        sendToMpu('192.168.50.127', payload);
-        sendToMpu('192.168.50.24', payload);
+        sendToMpu('192.168.50.22', JSON.stringify(payload));
+        sendToMpu('192.168.50.127', JSON.stringify(payload));
+        sendToMpu('192.168.50.24', JSON.stringify(payload));
 
       } else if (uri === '/latch') {
         console.log(new Date() + " Received latch state from MPU", data.toString());

@@ -1,10 +1,39 @@
 $(() => {
   "use strict";
 
+  const lightConfig = {
+    "B0": "客浴控制 45",
+    "B1": "客浴控制 46",
+    "B2": "展示櫃（未接）",
+    "B3": "走廊（燒毀）",
+    "B5": "客浴崁燈",
+    "B7": "客浴燈條",
+    "C0": "兒童房間照",
+    "C1": "儲藏室燈",
+    "C2": "主臥間照",
+    "C3": "主浴崁燈",
+    "C4": "主臥化妝台崁燈",
+    "C5": "書房間照",
+    "C6": "主臥床頭燈（左）（未接）",
+    "C7": "主臥床頭燈（右）（未接）",
+    "C8": "???",
+    "C9": "???",
+    "C10": "書房吊燈（未接）",
+    "C11": "書房軌道燈（未接）",
+    "C12": "主臥汙衣櫃崁燈（未接）",
+    "C13": "主浴抽風機",
+    "C14": "兒童房軌道燈（左）（未接）",
+    "C15": "兒童房軌道燈（右）（未接）",
+    "C16": "???",
+    "C17": "主臥陽台崁燈",
+    "C18": "???",
+    "C19": "???"
+  };
+
   let controls = {};
 
-  const addButton = key => {
-    let button = $('<div><img width="22px"><div>' + key + '</div></div>');
+  const addButton = (key, text) => {
+    let button = $('<div><img width="22px"><div class="btn-key">' + key + '</div><div class="btn-text">' + (text ? text : '') + '</div></div>');
     button.addClass('my-btn my-btn-1x1');
     button.on('click', () => {
       let payload = {
@@ -12,9 +41,9 @@ $(() => {
           "state change": true,
           "state sync": true
         },
-        "switch": {}
+        "web": {}
       };
-      payload.switch[key] = controls[key] ? !controls[key].state : true;
+      payload.web[key] = controls[key] ? !controls[key].state : true;
 
       log(key + ' click: ' + JSON.stringify(payload));
       fetch('/switch', {
@@ -36,15 +65,15 @@ $(() => {
 
   for (let i = 0; i < 32; i++) {
     let key = 'A' + i;
-    addButton(key);
+    addButton(key, lightConfig[key]);
   }
   for (let i = 0; i < 8; i++) {
     let key = 'B' + i;
-    addButton(key);
+    addButton(key, lightConfig[key]);
   }
   for (let i = 0; i < 24; i++) {
     let key = 'C' + i;
-    addButton(key);
+    addButton(key, lightConfig[key]);
   }
 
   const turnOn = (key) => {
