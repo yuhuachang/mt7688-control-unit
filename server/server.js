@@ -170,7 +170,7 @@ const server = http.createServer((request, response) => {
         };
 
         sendToMpu('192.168.50.22', JSON.stringify(payload));
-        sendToMpu('192.168.50.127', JSON.stringify(payload));
+        sendToMpu('192.168.50.23', JSON.stringify(payload));
         sendToMpu('192.168.50.24', JSON.stringify(payload));
 
       } else if (uri === '/latch') {
